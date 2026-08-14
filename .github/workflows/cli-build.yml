@@ -46,7 +46,10 @@ jobs:
 
       - name: Install WiX Toolset (Windows)
         if: runner.os == 'Windows'
-        run: dotnet tool install --global wix
+        # Pinned to 5.x: WiX v6+ requires accepting the Open Source
+        # Maintenance Fee EULA before the CLI will run non-interactively.
+        # v5's CLI still targets the same v4 .wxs schema our template uses.
+        run: dotnet tool install --global wix --version 5.0.2
 
       - name: Scaffold test app
         shell: bash
