@@ -108,6 +108,18 @@ jobs:
     # than folded into the fast desktop matrix.
     timeout-minutes: 45
 
+    # python-for-android's own dependency-install step runs an unconditional
+    # `pip install -U pip` inside a fresh venv it creates, with no version
+    # constraint -- this pulled a self-inconsistent pip release from PyPI
+    # ("ImportError: cannot import name 'open_rich_spinner' from
+    # pip._internal.cli.spinners"), reproduced even against a pinned p4a
+    # release, so the bug is in that pip release itself, not p4a's code.
+    # PIP_CONSTRAINT forces every pip invocation in this job -- including
+    # p4a's internal self-upgrade -- to resolve "pip" to a known-good
+    # version instead of whatever is newest on PyPI that day.
+    env:
+      PIP_CONSTRAINT: ${{ github.workspace }}/pip-constraints.txt
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -118,6 +130,9 @@ jobs:
           # buildozer/python-for-android tooling is more battle-tested on
           # 3.11 than 3.12 at the time of writing.
           python-version: '3.11'
+
+      - name: Write pip constraint
+        run: echo "pip==26.1.2" > pip-constraints.txt
 
       - name: Install system build dependencies
         run: |
