@@ -109,14 +109,14 @@ jobs:
     timeout-minutes: 45
 
     # python-for-android's own dependency-install step runs an unconditional
-    # `pip install -U pip` inside a fresh venv it creates, with no version
-    # constraint -- this pulled a self-inconsistent pip release from PyPI
-    # ("ImportError: cannot import name 'open_rich_spinner' from
-    # pip._internal.cli.spinners"), reproduced even against a pinned p4a
-    # release, so the bug is in that pip release itself, not p4a's code.
+    # `pip install -U pip` inside a fresh venv it creates. That self-upgrade
+    # replaces pip's own files while pip is still executing, which corrupts
+    # the running process's imports -- reproduced with two different target
+    # versions, each producing a different broken-import error, so the
+    # hazard is the live self-replace itself, not one bad release.
     # PIP_CONSTRAINT forces every pip invocation in this job -- including
-    # p4a's internal self-upgrade -- to resolve "pip" to a known-good
-    # version instead of whatever is newest on PyPI that day.
+    # p4a's internal self-upgrade -- to resolve "pip" to the version the
+    # venv already has, turning that upgrade into a no-op.
     env:
       PIP_CONSTRAINT: ${{ github.workspace }}/pip-constraints.txt
 
@@ -132,7 +132,18 @@ jobs:
           python-version: '3.11'
 
       - name: Write pip constraint
-        run: echo "pip==26.1.2" > pip-constraints.txt
+        # Pinned to whatever `python -m venv` already bundles via ensurepip
+        # for this Python version (confirmed via a live run: "Successfully
+        # installed pip-24.0" right after venv creation), not just "a known
+        # -good version" -- constraining to a *different* version (26.1.2)
+        # still triggered a real uninstall/reinstall of the running pip
+        # (visible as "Attempting uninstall: pip / Found existing
+        # installation: pip 24.0"), and produced a different broken-import
+        # failure each time, pointing at pip replacing its own files while
+        # executing as the actual hazard, not any one bad release. Matching
+        # the already-installed version makes p4a's `pip install -U pip`
+        # a no-op instead.
+        run: echo "pip==24.0" > pip-constraints.txt
 
       - name: Install system build dependencies
         run: |
@@ -142,8 +153,11 @@ jobs:
             zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
 
       - name: Install pywebview[cli] and buildozer
+        # No `pip install --upgrade pip` here: PIP_CONSTRAINT is job-scoped
+        # and pins pip==24.0, so an explicit upgrade would just fight the
+        # constraint for no benefit -- the pip actions/setup-python ships is
+        # already sufficient for these installs.
         run: |
-          python -m pip install --upgrade pip
           pip install -e ".[cli]"
           pip install buildozer cython
 
