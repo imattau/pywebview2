@@ -1,0 +1,18 @@
+import os
+
+import webview
+from webview.cli.config import load as load_config
+
+CONFIG = load_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pywebview.conf.json'))
+
+
+def main() -> None:
+    frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), CONFIG['frontendDist'])
+    index_path = os.path.join(frontend_dir, 'index.html')
+
+    webview.create_window(url=index_path, **CONFIG['window'])
+    webview.start(debug=os.environ.get('PYWEBVIEW_DEV') == '1')
+
+
+if __name__ == '__main__':
+    main()
