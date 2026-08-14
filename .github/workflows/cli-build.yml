@@ -131,6 +131,17 @@ jobs:
           # 3.11 than 3.12 at the time of writing.
           python-version: '3.11'
 
+      - name: Set up Java 17
+        # The runner ships multiple JDKs; without this, gradlew resolved
+        # JAVA_HOME to Java 11 and failed: "Android Gradle plugin requires
+        # Java 17 to run. You are currently using Java 11." Found via a
+        # live run -- setup-java pins JAVA_HOME reliably instead of relying
+        # on whichever JDK happens to be selected by default.
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Write pip constraint
         # Pinned to whatever `python -m venv` already bundles via ensurepip
         # for this Python version (confirmed via a live run: "Successfully
