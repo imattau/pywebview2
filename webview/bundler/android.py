@@ -39,6 +39,12 @@ DEFAULT_APP_SECTION = {
     # Without this, a fresh Android SDK triggers an interactive license
     # prompt on first build that blocks forever with no stdin (e.g. in CI).
     'android.accept_sdk_license': 'True',
+    # Pinned to a released python-for-android version rather than tracking
+    # master HEAD: master is a moving target and pulls in whatever the
+    # newest available toolchain releases happen to be that day (observed:
+    # a broken PyPI pip self-upgrade breaking p4a's own pip bootstrap step).
+    # A tagged release is a coherent, previously-tested snapshot instead.
+    'p4a.branch': '2026.5.9',
 }
 
 
