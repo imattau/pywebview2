@@ -15,6 +15,7 @@ compositor-specific portal, so this does not work under Wayland).
 
 from __future__ import annotations
 
+import ctypes
 import sys
 import threading
 from typing import Callable
@@ -229,8 +230,6 @@ def _windows_register(modifiers: frozenset[str], key: str, callback: Callable[[]
     def _do_register(user32):
         ok = user32.RegisterHotKey(None, hotkey_id, mod_flags, vk)
         if not ok:
-            import ctypes
-
             raise WebViewException(
                 f'Failed to register hotkey (GetLastError={ctypes.GetLastError()})'
             )
@@ -328,24 +327,76 @@ def _four_char_code(s: str) -> int:
     return (ord(s[0]) << 24) | (ord(s[1]) << 16) | (ord(s[2]) << 8) | ord(s[3])
 
 
-def _load_carbon():
-    import ctypes
+_carbon = None
 
-    return ctypes.cdll.LoadLibrary('/System/Library/Frameworks/Carbon.framework/Carbon')
+
+def _load_carbon():
+    # ctypes defaults every undeclared argument/return type to a 32-bit
+    # c_int, which silently truncates the 64-bit pointers Carbon's API
+    # traffics in (EventTargetRef, EventHandlerRef, ...) on 64-bit macOS --
+    # corrupting memory rather than raising, since ctypes has no way to
+    # detect the mismatch. Every function used here MUST have explicit
+    # argtypes/restype set before its first call, which is why this is
+    # done once, centrally, right after loading the library.
+    global _carbon
+    if _carbon is not None:
+        return _carbon
+
+    carbon = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/Carbon.framework/Carbon')
+
+    carbon.GetApplicationEventTarget.argtypes = []
+    carbon.GetApplicationEventTarget.restype = ctypes.c_void_p
+
+    carbon.InstallEventHandler.argtypes = [
+        ctypes.c_void_p,  # EventTargetRef
+        ctypes.c_void_p,  # EventHandlerUPP (function pointer)
+        ctypes.c_uint32,  # ItemCount
+        ctypes.c_void_p,  # const EventTypeSpec*
+        ctypes.c_void_p,  # void* userData
+        ctypes.c_void_p,  # EventHandlerRef* (out)
+    ]
+    carbon.InstallEventHandler.restype = ctypes.c_int32
+
+    carbon.RegisterEventHotKey.argtypes = [
+        ctypes.c_uint32,  # UInt32 inHotKeyCode
+        ctypes.c_uint32,  # UInt32 inHotKeyModifiers
+        _EventHotKeyID,  # EventHotKeyID inHotKeyID (by value)
+        ctypes.c_void_p,  # EventTargetRef inTarget
+        ctypes.c_uint32,  # OptionBits inOptions
+        ctypes.c_void_p,  # EventHotKeyRef* (out)
+    ]
+    carbon.RegisterEventHotKey.restype = ctypes.c_int32
+
+    carbon.UnregisterEventHotKey.argtypes = [ctypes.c_void_p]
+    carbon.UnregisterEventHotKey.restype = ctypes.c_int32
+
+    carbon.GetEventParameter.argtypes = [
+        ctypes.c_void_p,  # EventRef
+        ctypes.c_uint32,  # EventParamName
+        ctypes.c_uint32,  # EventParamType
+        ctypes.c_void_p,  # EventParamType* actualType (out, unused)
+        ctypes.c_uint32,  # UInt32 bufferSize
+        ctypes.c_void_p,  # UInt32* actualSize (out, unused)
+        ctypes.c_void_p,  # void* outData
+    ]
+    carbon.GetEventParameter.restype = ctypes.c_int32
+
+    _carbon = carbon
+    return carbon
+
+
+class _EventHotKeyID(ctypes.Structure):
+    _fields_ = [('signature', ctypes.c_uint32), ('id', ctypes.c_uint32)]
+
+
+class _EventTypeSpec(ctypes.Structure):
+    _fields_ = [('eventClass', ctypes.c_uint32), ('eventKind', ctypes.c_uint32)]
 
 
 def _macos_install_handler(carbon) -> None:
     global _macos_handler_installed
     if _macos_handler_installed:
         return
-
-    import ctypes
-
-    class _EventHotKeyID(ctypes.Structure):
-        _fields_ = [('signature', ctypes.c_uint32), ('id', ctypes.c_uint32)]
-
-    class _EventTypeSpec(ctypes.Structure):
-        _fields_ = [('eventClass', ctypes.c_uint32), ('eventKind', ctypes.c_uint32)]
 
     handler_type = ctypes.CFUNCTYPE(
         ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p
@@ -374,7 +425,7 @@ def _macos_install_handler(carbon) -> None:
         _four_char_code('keyb'), 5
     )  # kEventClassKeyboard, kEventHotKeyPressed
     out_ref = ctypes.c_void_p()
-    carbon.InstallEventHandler(
+    status = carbon.InstallEventHandler(
         carbon.GetApplicationEventTarget(),
         handler_fn,
         1,
@@ -382,12 +433,12 @@ def _macos_install_handler(carbon) -> None:
         None,
         ctypes.byref(out_ref),
     )
+    if status != 0:
+        raise WebViewException(f'Failed to install hotkey event handler (OSStatus={status})')
     _macos_handler_installed = True
 
 
 def _macos_register(modifiers: frozenset[str], key: str, callback: Callable[[], None]) -> int:
-    import ctypes
-
     if key not in _MAC_KEYCODES:
         raise WebViewException(f'Unsupported key: {key!r}')
 
@@ -407,9 +458,6 @@ def _macos_register(modifiers: frozenset[str], key: str, callback: Callable[[], 
     global _macos_next_id
     hotkey_id = _macos_next_id
     _macos_next_id += 1
-
-    class _EventHotKeyID(ctypes.Structure):
-        _fields_ = [('signature', ctypes.c_uint32), ('id', ctypes.c_uint32)]
 
     hotkey_id_struct = _EventHotKeyID(_four_char_code('pywv'), hotkey_id)
     hotkey_ref = ctypes.c_void_p()

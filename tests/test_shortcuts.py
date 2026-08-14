@@ -65,6 +65,27 @@ class TestParseShortcut:
 
 
 class TestRegistryDispatch:
+    """
+    Tests for the shared registry logic in register/unregister/is_registered
+    (duplicate detection, no-op unregister, unregister_all) -- these don't
+    care which OS backend is used, so the actual per-platform register/
+    unregister functions are faked out here rather than exercising the real
+    native backend (which may not have its optional dependency installed,
+    e.g. python-xlib on a Linux CI job that didn't install
+    pywebview[shortcuts]).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fake_backend(self, monkeypatch):
+        counter = iter(range(1, 1000))
+        monkeypatch.setattr(shortcuts, '_linux_register', lambda *a: next(counter))
+        monkeypatch.setattr(shortcuts, '_linux_unregister', lambda *a: None)
+        monkeypatch.setattr(shortcuts, '_macos_register', lambda *a: next(counter))
+        monkeypatch.setattr(shortcuts, '_macos_unregister', lambda *a: None)
+        monkeypatch.setattr(shortcuts, '_windows_register', lambda *a: next(counter))
+        monkeypatch.setattr(shortcuts, '_windows_unregister', lambda *a: None)
+        yield
+
     def test_unsupported_platform(self, monkeypatch):
         monkeypatch.setattr(sys, 'platform', 'freebsd13')
         with pytest.raises(WebViewException):
