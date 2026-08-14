@@ -18,7 +18,13 @@ import shutil
 import subprocess
 from typing import Any
 
-DEFAULT_REQUIREMENTS = 'python3,kivy,pywebview'
+# python3 pinned rather than left open: an unpinned python3 recipe resolves
+# to the newest CPython p4a supports, and pip's install of pywebview's pure
+# -Python deps for that Android-arch/version wheel tag combination is prone
+# to breaking on the newest releases (e.g. "not a supported wheel on this
+# platform" for a brand-new cp3xx android_24_arm64_v8a tag). 3.11 is a more
+# battle-tested target for python-for-android at the time of writing.
+DEFAULT_REQUIREMENTS = 'python3==3.11,kivy,pywebview'
 
 DEFAULT_APP_SECTION = {
     'source.include_exts': 'py,png,jpg,kv,atlas,html,jar,css,js',
