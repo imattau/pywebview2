@@ -65,3 +65,7 @@ pywebview icon logo.png --output icons
 ## `pywebview doctor`
 
 Checks the local environment: Python version, which pywebview backend is importable, and which external packaging tools (WiX, NSIS, dpkg-deb, appimagetool, buildozer) are on `PATH`.
+
+## Roadmap
+
+- **iOS** is not yet supported and is deferred as future work. Unlike Android, pywebview has no existing iOS backend to wrap, and PyObjC (used by `platforms/cocoa.py` on macOS) does not run on iOS, so this isn't a simple port. It needs its own design spike to choose between a Kivy-ios/`pyobjus` approach (consistent with the Android/Kivy story, but `pyobjus` is far less mature than `pyjnius`) and a BeeWare-style custom Xcode + `Python.xcframework` approach -- either requires a new `webview/platforms/ios/` backend, a new `guilib.py` detection branch, and code-signing/provisioning-profile handling with no existing analogue in this codebase. The config schema already reserves `mobile.ios.enabled: false` so `pywebview.conf.json` doesn't need a breaking change once this lands.

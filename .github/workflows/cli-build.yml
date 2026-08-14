@@ -1,0 +1,93 @@
+name: CLI Build Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ 'feature/cli-toolchain' ]
+  pull_request:
+    paths:
+      - 'webview/cli/**'
+      - 'webview/bundler/**'
+      - '.github/workflows/cli-build.yml'
+      - 'pyproject.toml'
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: deb
+            artifact_glob: dist/installers/*.deb
+          - os: windows-latest
+            target: msi
+            artifact_glob: dist/installers/*.msi
+          - os: macos-latest
+            target: dmg
+            artifact_glob: dist/installers/*.dmg
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pywebview[cli]
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[cli]"
+
+      - name: Install WiX Toolset (Windows)
+        if: runner.os == 'Windows'
+        run: dotnet tool install --global wix
+
+      - name: Scaffold test app
+        shell: bash
+        run: |
+          pywebview init testapp --name "CLI Smoke Test" --identifier com.example.clismoketest --yes
+
+      - name: Set bundle target
+        shell: python
+        run: |
+          import json
+          path = 'testapp/pywebview.conf.json'
+          with open(path) as f:
+              config = json.load(f)
+          config['bundle']['targets'] = ['${{ matrix.target }}']
+          with open(path, 'w') as f:
+              json.dump(config, f, indent=2)
+
+      - name: Run doctor
+        working-directory: testapp
+        run: pywebview doctor
+        continue-on-error: true
+
+      - name: Build
+        working-directory: testapp
+        run: pywebview build
+
+      - name: Verify installer artifact was produced
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(testapp/${{ matrix.artifact_glob }})
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No installer artifact matched testapp/${{ matrix.artifact_glob }}"
+            find testapp/dist -type f
+            exit 1
+          fi
+          echo "Found installer artifact(s):"
+          printf '%s\n' "${files[@]}"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: testapp/${{ matrix.artifact_glob }}
