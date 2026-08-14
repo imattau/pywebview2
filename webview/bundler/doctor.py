@@ -4,6 +4,7 @@ Environment checks for the pywebview CLI: which backend/tools are available.
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
@@ -93,8 +94,19 @@ def check_linux_tools() -> list[CheckResult]:
     ]
 
 
-def check_android_tools() -> CheckResult:
-    return CheckResult('buildozer', _has_executable('buildozer'), 'required for Android builds')
+def check_android_tools() -> list[CheckResult]:
+    sdk_home = os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT')
+    return [
+        CheckResult('buildozer', _has_executable('buildozer'), 'required for Android builds'),
+        CheckResult(
+            'Android SDK',
+            bool(sdk_home and os.path.isdir(sdk_home)),
+            sdk_home or 'set ANDROID_HOME or ANDROID_SDK_ROOT',
+        ),
+        CheckResult(
+            'Java (javac)', _has_executable('javac'), 'required by the Android SDK build tools'
+        ),
+    ]
 
 
 def run_all() -> list[CheckResult]:
@@ -108,5 +120,5 @@ def run_all() -> list[CheckResult]:
     elif system == 'Linux':
         results += check_linux_tools()
 
-    results.append(check_android_tools())
+    results += check_android_tools()
     return results

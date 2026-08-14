@@ -46,10 +46,13 @@ Freezes the app with PyInstaller (reusing the `webview.__pyinstaller` hook autom
 | `dmg` | macOS | `hdiutil` (built in) |
 | `deb` | Linux | `dpkg-deb` |
 | `appimage` | Linux | [appimagetool](https://github.com/AppImage/appimagetool) |
+| `android` | Linux | [buildozer](https://buildozer.readthedocs.io/) + Android SDK/NDK/Java |
 
 `build` only attempts targets that are buildable on the host OS -- there is no cross-compilation for installers (e.g. a `.dmg` requires building on macOS). Run `pywebview doctor` to check which external tools are available locally.
 
 WebKitGTK (Linux) cannot be bundled; `.deb` declares it via `Depends:` and AppImage builds print a warning that it must already be present on the target system. WebView2 (Windows) is provisioned per `bundle.windows.webview2InstallMode`.
+
+`android` skips the PyInstaller freeze step (buildozer/python-for-android does its own build) and instead templates a `buildozer.spec` from `mobile.android.buildozerSpecOverrides` and runs `buildozer android debug` (or `--release` for a release build). The entry point must be named `main.py`, which buildozer requires. This wraps the existing manual buildozer workflow described in [Freezing](freezing.md#android) -- pywebview's Android backend itself (Kivy/pyjnius-based) is unchanged.
 
 ## `pywebview icon`
 

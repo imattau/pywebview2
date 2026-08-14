@@ -109,7 +109,7 @@ def validate(config: dict[str, Any]) -> None:
     if missing:
         raise ConfigError(f'Missing required config keys: {", ".join(missing)}')
 
-    valid_targets = {'msi', 'nsis', 'dmg', 'deb', 'appimage'}
+    valid_targets = {'msi', 'nsis', 'dmg', 'deb', 'appimage', 'android'}
     targets = config.get('bundle', {}).get('targets', [])
     invalid = set(targets) - valid_targets
     if invalid:

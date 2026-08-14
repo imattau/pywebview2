@@ -33,7 +33,7 @@
       "properties": {
         "targets": {
           "type": "array",
-          "items": { "enum": ["msi", "nsis", "dmg", "deb", "appimage"] }
+          "items": { "enum": ["msi", "nsis", "dmg", "deb", "appimage", "android"] }
         },
         "icon": { "type": ["string", "null"] },
         "resources": { "type": "array", "items": { "type": "string" } },
