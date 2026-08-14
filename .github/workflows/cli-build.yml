@@ -97,7 +97,11 @@ jobs:
 
   android:
     name: android
-    runs-on: ubuntu-latest
+    # Pinned to 22.04: python-for-android's libffi recipe uses an old
+    # configure.ac that fails under 24.04's newer autotools ("configure.ac:
+    # error: possibly undefined macro: LT_SYS_SYMBOL_USCORE" during
+    # autoreconf) -- a known python-for-android/Ubuntu-24.04 incompatibility.
+    runs-on: ubuntu-22.04
     # buildozer/python-for-android compiles native recipes from scratch on a
     # cold cache -- this routinely takes far longer than the desktop
     # installer jobs above, so it's kept as its own decoupled job rather
