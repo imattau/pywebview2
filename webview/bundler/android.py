@@ -27,8 +27,10 @@ from typing import Any
 # hostpython3 must be pinned to the same version -- p4a requires the
 # build-host interpreter and the on-device target interpreter to match
 # ("python3 should have same version as hostpython3") and won't infer it
-# from the python3 pin alone.
-DEFAULT_REQUIREMENTS = 'python3==3.11,hostpython3==3.11,kivy,pywebview'
+# from the python3 pin alone. An exact patch version is required: p4a
+# resolves this to a CPython git tag (https://github.com/python/cpython/
+# archive/refs/tags/v<version>.tar.gz) and "v3.11" alone is not a real tag.
+DEFAULT_REQUIREMENTS = 'python3==3.11.9,hostpython3==3.11.9,kivy,pywebview'
 
 DEFAULT_APP_SECTION = {
     'source.include_exts': 'py,png,jpg,kv,atlas,html,jar,css,js',
