@@ -16,6 +16,7 @@ import os
 import sys
 
 from webview.errors import WebViewException
+from webview.util import app_data_dir
 
 _SERVICE_LABEL = 'pywebview'
 
@@ -167,8 +168,7 @@ def _macos_delete_password(service: str, username: str) -> None:
 
 
 def _windows_data_dir() -> str:
-    appdata = os.environ.get('APPDATA') or os.path.expanduser('~')
-    path = os.path.join(appdata, 'pywebview', 'keyring')
+    path = os.path.join(app_data_dir(), 'keyring')
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -299,7 +299,7 @@ def _linux_delete_password(service: str, username: str) -> None:
 
 
 def _linux_fallback_dir() -> str:
-    path = os.path.expanduser('~/.pywebview/keyring')
+    path = os.path.join(app_data_dir(), 'keyring')
     os.makedirs(path, mode=0o700, exist_ok=True)
     return path
 
