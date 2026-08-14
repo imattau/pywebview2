@@ -24,7 +24,11 @@ from typing import Any
 # to breaking on the newest releases (e.g. "not a supported wheel on this
 # platform" for a brand-new cp3xx android_24_arm64_v8a tag). 3.11 is a more
 # battle-tested target for python-for-android at the time of writing.
-DEFAULT_REQUIREMENTS = 'python3==3.11,kivy,pywebview'
+# hostpython3 must be pinned to the same version -- p4a requires the
+# build-host interpreter and the on-device target interpreter to match
+# ("python3 should have same version as hostpython3") and won't infer it
+# from the python3 pin alone.
+DEFAULT_REQUIREMENTS = 'python3==3.11,hostpython3==3.11,kivy,pywebview'
 
 DEFAULT_APP_SECTION = {
     'source.include_exts': 'py,png,jpg,kv,atlas,html,jar,css,js',
