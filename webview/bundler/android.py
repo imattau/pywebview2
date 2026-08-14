@@ -44,7 +44,7 @@ DEFAULT_APP_SECTION = {
     # newest available toolchain releases happen to be that day (observed:
     # a broken PyPI pip self-upgrade breaking p4a's own pip bootstrap step).
     # A tagged release is a coherent, previously-tested snapshot instead.
-    'p4a.branch': '2026.5.9',
+    'p4a.branch': 'v2026.05.09',
 }
 
 
