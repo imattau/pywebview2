@@ -24,6 +24,9 @@ DEFAULT_APP_SECTION = {
     'source.include_exts': 'py,png,jpg,kv,atlas,html,jar,css,js',
     'source.exclude_dirs': 'bin,build,dist,installers,__pycache__,.git',
     'android.permissions': 'INTERNET',
+    # Without this, a fresh Android SDK triggers an interactive license
+    # prompt on first build that blocks forever with no stdin (e.g. in CI).
+    'android.accept_sdk_license': 'True',
 }
 
 
