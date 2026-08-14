@@ -10,7 +10,7 @@ TEMPLATES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'templates'
 )
 
-AVAILABLE_TEMPLATES = ('vanilla',)
+AVAILABLE_TEMPLATES = ('vanilla', 'vue', 'react')
 
 
 def _default_identifier(name: str) -> str:
@@ -83,6 +83,9 @@ def init(
 
     click.echo(f'Created new pywebview project in {target_dir}')
     click.echo('Next steps:')
-    click.echo(f'  cd {os.path.relpath(target_dir)}' if target_dir != os.getcwd() else '')
+    if target_dir != os.getcwd():
+        click.echo(f'  cd {os.path.relpath(target_dir)}')
     click.echo('  pip install pywebview[cli]')
+    if template_name in ('vue', 'react'):
+        click.echo('  npm --prefix frontend install')
     click.echo('  pywebview dev')
