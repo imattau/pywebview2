@@ -396,12 +396,19 @@ class EdgeChrome:
         for k in missing_headers:
             args.Request.Headers.RemoveHeader(k)
 
-    def serve_custom_protocol(self, sender, args, request):
-        response = protocol.handle(request.url, request.method)
+    def serve_custom_protocol(self, core_webview, args, request):
+        # pythonnet swallows exceptions raised in event handlers. An unanswered
+        # request would go on to the network, so always reply with something.
+        try:
+            response = protocol.handle(request.url, request.method)
+        except Exception:
+            logger.exception(f'Custom protocol request failed: {request.url}')
+            response = protocol.error_response(500, 'Internal Server Error')
+
         # base64 avoids a per-byte conversion of the body into a .NET byte[]
         body = Convert.FromBase64String(base64.b64encode(response.body).decode('ascii'))
         headers = '\r\n'.join(f'{k}: {v}' for k, v in response.headers.items())
-        args.Response = sender.CoreWebView2.Environment.CreateWebResourceResponse(
+        args.Response = core_webview.Environment.CreateWebResourceResponse(
             MemoryStream(body), response.status, response.reason, headers
         )
 

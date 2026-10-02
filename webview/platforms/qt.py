@@ -44,14 +44,17 @@ try:
     renderer = 'qtwebengine'
     is_webengine = True
 
-    try:  # Qt >= 5.12
+    try:
         from qtpy.QtWebEngineCore import (
             QWebEngineUrlRequestJob,
             QWebEngineUrlScheme,
             QWebEngineUrlSchemeHandler,
         )
 
-        custom_protocol_origin = protocol.SCHEME_ORIGIN
+        # Before Qt 6.6 the Fetch API rejects custom schemes, which would break
+        # most frontends, so older versions keep using the HTTP server
+        if hasattr(getattr(QWebEngineUrlScheme, 'Flag', QWebEngineUrlScheme), 'FetchApiAllowed'):
+            custom_protocol_origin = protocol.SCHEME_ORIGIN
     except ImportError:
         QWebEngineUrlSchemeHandler = object
 except ImportError:
@@ -63,6 +66,32 @@ except ImportError:
 
 logger = logging.getLogger('pywebview2')
 logger.debug(f'Using Qt {QtCore.__version__}')
+
+
+def _register_custom_scheme() -> bool:
+    """
+    Register the custom scheme with Qt WebEngine. This is possible only before
+    QApplication is created. Returns whether the scheme is registered.
+    """
+    if QWebEngineUrlScheme.schemeByName(protocol.SCHEME.encode()).name():
+        return True
+
+    if QApplication.instance():
+        return False
+
+    flags = QWebEngineUrlScheme.Flag
+    scheme = QWebEngineUrlScheme(protocol.SCHEME.encode())
+    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
+    scheme.setFlags(flags.SecureScheme | flags.CorsEnabled | flags.FetchApiAllowed)
+    QWebEngineUrlScheme.registerScheme(scheme)
+    return True
+
+
+# Registering eagerly lets the scheme work even if custom_protocol is only
+# enabled after a QApplication exists. The scheme does nothing until a handler
+# is installed.
+if custom_protocol_origin:
+    _register_custom_scheme()
 
 if is_webengine and QtCore.QSysInfo.productType() in ['arch', 'manjaro', 'nixos', 'rhel', 'pop']:
     # I don't know why, but it's a common solution for #890 (White screen displayed)
@@ -969,7 +998,7 @@ class BrowserView(QMainWindow):
 
 
 def setup_app():
-    global _app
+    global _app, custom_protocol_origin
     if settings['IGNORE_SSL_ERRORS']:
         environ_append('QTWEBENGINE_CHROMIUM_FLAGS', '--ignore-certificate-errors')
     if settings['REMOTE_DEBUGGING_PORT']:
@@ -977,27 +1006,13 @@ def setup_app():
             'QTWEBENGINE_CHROMIUM_FLAGS',
             f"--remote-debugging-port={settings['REMOTE_DEBUGGING_PORT']}",
         )
-    if protocol.is_enabled() and custom_protocol_origin:
-        _register_custom_scheme()
-    _app = QApplication.instance() or QApplication(sys.argv)
-
-
-def _register_custom_scheme():
-    if QApplication.instance():
+    if protocol.is_enabled() and custom_protocol_origin and not _register_custom_scheme():
         logger.warning(
-            'QApplication was created before pywebview2 could register the custom protocol. '
-            'Pages will load, but will not be treated as a secure context.'
+            'QApplication was created before pywebview2 could register the custom protocol, '
+            'falling back to HTTP server'
         )
-        return
-
-    flags = getattr(QWebEngineUrlScheme, 'Flag', QWebEngineUrlScheme)
-    scheme = QWebEngineUrlScheme(protocol.SCHEME.encode())
-    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
-    scheme_flags = flags.SecureScheme | flags.CorsEnabled
-    if hasattr(flags, 'FetchApiAllowed'):  # Qt >= 6.6
-        scheme_flags |= flags.FetchApiAllowed
-    scheme.setFlags(scheme_flags)
-    QWebEngineUrlScheme.registerScheme(scheme)
+        custom_protocol_origin = None
+    _app = QApplication.instance() or QApplication(sys.argv)
 
 
 def create_window(window):

@@ -164,17 +164,17 @@ def handle(url: str, method: str = 'GET') -> AssetResponse:
     parts = urlsplit(url)
 
     if (parts.scheme, parts.hostname) not in ((SCHEME, HOST), ('https', HTTPS_HOST)):
-        return _error(404, 'Not Found')
+        return error_response(404, 'Not Found')
 
     if method not in ('GET', 'HEAD'):
-        return _error(405, 'Method Not Allowed', {'Allow': 'GET, HEAD'})
+        return error_response(405, 'Method Not Allowed', {'Allow': 'GET, HEAD'})
 
     if _root is None:
-        return _error(404, 'Not Found')
+        return error_response(404, 'Not Found')
 
     relative = unquote(parts.path).lstrip('/')
     if '\0' in relative:
-        return _error(400, 'Bad Request')
+        return error_response(400, 'Bad Request')
 
     path = os.path.realpath(os.path.join(_root, relative))
 
@@ -182,20 +182,20 @@ def handle(url: str, method: str = 'GET') -> AssetResponse:
     # links that point outside the root.
     if not _is_within(path, _root):
         logger.warning(f'Blocked custom protocol request outside root: {url}')
-        return _error(403, 'Forbidden')
+        return error_response(403, 'Forbidden')
 
     if os.path.isdir(path):
         path = os.path.join(path, 'index.html')
 
     if not os.path.isfile(path):
-        return _error(404, 'Not Found')
+        return error_response(404, 'Not Found')
 
     try:
         with open(path, 'rb') as f:
             body = f.read()
     except OSError as e:
         logger.error(f'Failed to read {path}: {e}')
-        return _error(500, 'Internal Server Error')
+        return error_response(500, 'Internal Server Error')
 
     response = AssetResponse(
         200,
@@ -217,7 +217,9 @@ def guess_mimetype(path: str) -> str:
     return _MIME_TYPES.get(ext) or mimetypes.guess_type(path)[0] or 'application/octet-stream'
 
 
-def _error(status: int, reason: str, headers: dict[str, str] | None = None) -> AssetResponse:
+def error_response(
+    status: int, reason: str, headers: dict[str, str] | None = None
+) -> AssetResponse:
     response = AssetResponse(status, reason, 'text/plain', reason.encode(), dict(headers or {}))
     response.headers['Content-Type'] = response.content_type
     response.headers['Content-Length'] = str(len(response.body))

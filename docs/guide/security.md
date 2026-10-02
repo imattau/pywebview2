@@ -11,9 +11,9 @@ webview.create_window('My App', 'frontend/index.html')
 webview.start(custom_protocol=True)
 ```
 
-Files are then loaded from `pywebview://localhost/` (GTK, Cocoa, Qt WebEngine) or `https://pywebview.localhost/` (EdgeChromium). These requests are answered inside the application and never reach a network socket. Only files inside the root directory, the deepest directory common to the local URLs of windows created before `start`, are served, and requests that escape it through `..` or symbolic links are refused. Pages are treated as a secure context, so APIs such as `crypto.subtle` are available. The origin is fixed, so `localStorage` and cookies persist between runs when `private_mode=False`.
+Files are then loaded from `pywebview://localhost/` (GTK, Cocoa, Qt WebEngine 6.6+) or `https://pywebview.localhost/` (EdgeChromium). These requests are answered inside the application and never reach a network socket. Only files inside the root directory, the deepest directory common to the local URLs of windows created before `start`, are served, and requests that escape it through `..` or symbolic links are refused. Pages are treated as a secure context, so APIs such as `crypto.subtle` are available. The origin is fixed, so `localStorage` and cookies persist between runs when `private_mode=False`.
 
-Backends that do not support scheme handlers (CEF, MSHTML, QtWebKit, Android and iOS) fall back to the HTTP server. Projects created with `pywebview2 init` enable the custom protocol by default.
+Backends that do not support scheme handlers (CEF, MSHTML, QtWebKit, Qt WebEngine before 6.6, Android and iOS) fall back to the HTTP server. Projects created with `pywebview2 init` enable the custom protocol by default.
 
 ## SSL for the HTTP server
 
