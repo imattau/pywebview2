@@ -110,7 +110,7 @@ Create a new _pywebview_ window and returns its instance. Can be used to create 
 webview.start(func=None, args=None, localization={}, gui=None, debug=False,
               http_server=False, http_port=None, user_agent=None, private_mode=True,
               storage_path=None, menu=[], server=http.BottleServer, ssl=False,
-              server_args={}, icon=None):
+              server_args={}, icon=None, custom_protocol=False):
 ```
 
 Start a GUI loop and display previously created windows. This function must be called from a main thread.
@@ -129,6 +129,7 @@ Start a GUI loop and display previously created windows. This function must be c
 * `server` - A custom WSGI server instance. Defaults to BottleServer.
 * `ssl` - If using the default BottleServer (and for now the GTK backend), will use SSL encryption between the webview and the internal server. You need to have `cryptography` pip dependency installed in order to use `ssl`. It is not installed by default.
 * `server_args` - Dictionary of arguments to pass through to the server instantiation
+* `custom_protocol` - serve local files through a native URL scheme handler instead of the local HTTP server. Local files are loaded from `pywebview://localhost/` (GTK, Cocoa, Qt WebEngine) or `https://pywebview.localhost/` (EdgeChromium) and are never exposed on a network port. The origin is the same on every run, so `localStorage` and cookies persist without a fixed `http_port`. Backends without scheme handler support (CEF, MSHTML, QtWebKit, Android, iOS) fall back to the HTTP server, as do WSGI apps and local files outside the root directory. The root is the deepest directory common to the local URLs of windows created before `start`. `http_server`, `http_port` and `ssl` do not apply to files served this way. See [Security](/guide/security.md).
 * `icon` - path to application icon. Generally icon should be specified during bundling, but if you need to set it manually, you can use this parameter. Supported formats are `.ico` on Windows and `.icns` on macOS. On Linux support depends on the desktop environment, but generally `.png` icons are supported.
 
 #### Examples

@@ -19,7 +19,7 @@ def main() -> None:
 
     window = webview.create_window(url=url, **CONFIG['window'])
     devreload.maybe_start(window)
-    webview.start(debug=is_dev)
+    webview.start(debug=is_dev, custom_protocol=True)
 
 
 if __name__ == '__main__':

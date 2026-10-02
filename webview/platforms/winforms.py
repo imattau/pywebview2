@@ -144,6 +144,7 @@ elif is_chromium:
 
     logger.debug('Using WinForms / Chromium')
     renderer = 'edgechromium'
+    custom_protocol_origin = Chromium.custom_protocol_origin
 else:
     from . import mshtml as IE
 

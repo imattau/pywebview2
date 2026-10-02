@@ -25,6 +25,7 @@ from proxy_tools import module_property
 
 import webview.http as http
 import webview.keyring  # noqa: F401 -- exposes webview.keyring.* as a namespace
+import webview.protocol as protocol
 import webview.shortcuts  # noqa: F401 -- exposes webview.shortcuts.* as a namespace
 import webview.store  # noqa: F401 -- exposes webview.store.* as a namespace
 import webview.tray  # noqa: F401 -- exposes webview.tray.* as a namespace
@@ -160,6 +161,7 @@ _state = ImmutableDict(
         'user_agent': None,
         'http_server': False,
         'ssl': False,
+        'custom_protocol': False,
         'icon': None,
         'menu': None,
     }
@@ -197,6 +199,7 @@ def start(
     server_args: dict[Any, Any] = {},
     ssl: bool = False,
     icon: str | None = None,
+    custom_protocol: bool = False,
 ):
     """
     Start a GUI loop and display previously created windows. This function must
@@ -223,6 +226,10 @@ def start(
     :param server_args: Dictionary of arguments to pass through to the server instantiation
     :param ssl: Enable SSL for local HTTP server. Default is False.
     :param icon: Path to the icon file. Supported only on GTK/QT.
+    :param custom_protocol: Serve local files through a native URL scheme handler instead of
+        the local HTTP server. Local files are then loaded from ``pywebview://localhost/`` or
+        ``https://pywebview.localhost/`` and are not reachable over the network. Backends without
+        scheme handler support fall back to the HTTP server. Default is False.
     """
     global guilib, renderer
 
@@ -237,6 +244,7 @@ def start(
     _state['user_agent'] = user_agent
     _state['http_server'] = http_server
     _state['private_mode'] = private_mode
+    _state['custom_protocol'] = custom_protocol
 
     if icon:
         _state['icon'] = abspath(icon)
@@ -289,7 +297,19 @@ def start(
         server_args.pop('certfile', None)
 
     urls = [w.original_url for w in windows]
-    has_local_urls = not not [w.original_url for w in windows if is_local_url(w.original_url)]
+
+    if protocol.origin_for(guilib):
+        protocol.set_root_from_urls(urls)
+        # local files are served by the scheme handler, so only WSGI apps need a server
+        has_local_urls = False
+        http_server = False
+    else:
+        if custom_protocol:
+            logger.warning(
+                f'Custom protocol is not supported by {renderer}, falling back to HTTP server'
+            )
+        has_local_urls = not not [w.original_url for w in windows if is_local_url(w.original_url)]
+
     # start the global server if it's not running and we need it
     if (http.global_server is None) and (http_server or has_local_urls):
         if not _state['private_mode'] and not http_port:
@@ -436,7 +456,9 @@ def create_window(
 
     # This immediately creates the window only if `start` has already been called
     if threading.current_thread().name != 'MainThread' and guilib:
-        if is_app(url) or is_local_url(url) and not server.is_running:
+        if protocol.resolve_url(url, guilib):
+            server = None
+        elif is_app(url) or is_local_url(url) and not server.is_running:
             _, _, server = http.start_server([url], server=server, **server_args)
         else:
             server = None

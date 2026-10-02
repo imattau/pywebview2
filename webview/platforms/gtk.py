@@ -8,6 +8,7 @@ from threading import Semaphore, Thread, main_thread
 from typing import Any
 from uuid import uuid1
 
+import webview.protocol as protocol
 from webview import FileDialog, _state, settings, windows
 from webview.dom import _dnd_state
 from webview.menu import Menu, MenuAction, MenuSeparator
@@ -38,18 +39,20 @@ except ValueError:
     gi.require_version('WebKit2', '4.0')
     gi.require_version('Soup', '2.4')
 
-from gi.repository import Gdk, Gio  # noqa: E402
+from gi.repository import Gdk, Gio, Soup  # noqa: E402
 from gi.repository import GLib as glib  # noqa: E402
 from gi.repository import Gtk as gtk  # noqa: E402
 from gi.repository import WebKit2 as webkit  # noqa: E402
 
 renderer = 'gtkwebkit2'
 webkit_ver = webkit.get_major_version(), webkit.get_minor_version(), webkit.get_micro_version()
+custom_protocol_origin = protocol.SCHEME_ORIGIN
 
 _app = None
 _app_actions = {}  # action_label: function
 
 cert = None
+_protocol_contexts = []  # web contexts with the custom scheme registered
 
 
 class BrowserView:
@@ -193,6 +196,9 @@ class BrowserView:
 
         if cert:
             web_context.allow_tls_certificate_for_host(cert, '127.0.0.1')
+
+        if protocol.is_enabled():
+            register_custom_protocol(web_context)
 
         self.manager = webkit.UserContentManager()
         self.manager.register_script_message_handler('jsBridge')
@@ -750,6 +756,46 @@ class BrowserView:
         b = int(hex_color[4:6], 16) / 255.0
 
         return Gdk.RGBA(r, g, b, 1.0)
+
+
+def register_custom_protocol(web_context):
+    # A scheme can be registered only once per context, and the default
+    # context is shared between windows
+    if web_context in _protocol_contexts:
+        return
+
+    web_context.register_uri_scheme(protocol.SCHEME, _on_custom_protocol_request)
+    security_manager = web_context.get_security_manager()
+    security_manager.register_uri_scheme_as_secure(protocol.SCHEME)
+    security_manager.register_uri_scheme_as_cors_enabled(protocol.SCHEME)
+    _protocol_contexts.append(web_context)
+
+
+def _on_custom_protocol_request(request):
+    method = request.get_http_method() if hasattr(request, 'get_http_method') else 'GET'
+    response = protocol.handle(request.get_uri(), method or 'GET')
+    stream = Gio.MemoryInputStream.new_from_bytes(glib.Bytes.new(response.body))
+
+    if not hasattr(webkit, 'URISchemeResponse'):  # WebKitGTK < 2.36
+        if response.status == 200:
+            request.finish(stream, len(response.body), response.content_type)
+        else:
+            error = glib.Error.new_literal(
+                Gio.io_error_quark(), response.reason, Gio.IOErrorEnum.NOT_FOUND
+            )
+            request.finish_error(error)
+        return
+
+    scheme_response = webkit.URISchemeResponse.new(stream, len(response.body))
+    scheme_response.set_status(response.status, response.reason)
+    scheme_response.set_content_type(response.content_type)
+
+    headers = Soup.MessageHeaders.new(Soup.MessageHeadersType.RESPONSE)
+    for name, value in response.headers.items():
+        headers.append(name, value)
+    scheme_response.set_http_headers(headers)
+
+    request.finish_with_response(scheme_response)
 
 
 def setup_app():

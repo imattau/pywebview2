@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ except Exception:
     os.environ['PYTHONNET_RUNTIME'] = 'coreclr'
     import clr
 
+import webview.protocol as protocol
 from webview import Window, _state
 from webview import settings as webview_settings
 from webview.dom import _dnd_state
@@ -35,6 +37,7 @@ from System.Collections.Generic import List  # noqa: E402
 from System.Diagnostics import Process  # noqa: E402
 from System.Drawing import Color  # noqa: E402
 from System.Globalization import CultureInfo  # noqa: E402
+from System.IO import MemoryStream  # noqa: E402
 from System.Threading.Tasks import Task, TaskScheduler  # noqa: E402
 
 clr.AddReference(interop_dll_path('Microsoft.Web.WebView2.Core.dll'))
@@ -53,6 +56,10 @@ for platform in ('win-arm64', 'win-x64', 'win-x86'):
 
 logger = logging.getLogger('pywebview2')
 renderer = 'edgechromium'
+# Chromium treats only http(s) as a secure context, so local files are served
+# from an https origin that is intercepted in WebResourceRequested and never
+# reaches the network
+custom_protocol_origin = protocol.HTTPS_ORIGIN
 
 
 class EdgeChrome:
@@ -367,6 +374,10 @@ class EdgeChrome:
         request = Request(str(args.Request.Uri), args.Request.Method, original_headers)
         self.pywebview_window.events.request_sent.set(request)
 
+        if protocol.is_enabled() and request.url.startswith(protocol.HTTPS_ORIGIN):
+            self.serve_custom_protocol(sender, args, request)
+            return
+
         if request.headers == original_headers:
             return
 
@@ -384,6 +395,15 @@ class EdgeChrome:
 
         for k in missing_headers:
             args.Request.Headers.RemoveHeader(k)
+
+    def serve_custom_protocol(self, sender, args, request):
+        response = protocol.handle(request.url, request.method)
+        # base64 avoids a per-byte conversion of the body into a .NET byte[]
+        body = Convert.FromBase64String(base64.b64encode(response.body).decode('ascii'))
+        headers = '\r\n'.join(f'{k}: {v}' for k, v in response.headers.items())
+        args.Response = sender.CoreWebView2.Environment.CreateWebResourceResponse(
+            MemoryStream(body), response.status, response.reason, headers
+        )
 
     def on_navigation_completed(self, sender, _):
         url = str(sender.Source)

@@ -16,6 +16,7 @@ from qtpy.QtCore import QByteArray, QJsonValue
 from qtpy.QtGui import QColor, QIcon, QScreen
 from qtpy.QtWidgets import QAction, QApplication, QFileDialog, QMainWindow, QMenuBar, QMessageBox
 
+import webview.protocol as protocol
 from webview import FileDialog, _state, settings, windows
 from webview.dom import _dnd_state
 from webview.menu import Menu, MenuAction, MenuSeparator
@@ -30,6 +31,8 @@ from webview.util import (
 )
 from webview.window import FixPoint, Window
 
+custom_protocol_origin = None
+
 try:
     from qtpy.QtNetwork import QSslCertificate, QSslConfiguration
     from qtpy.QtWebChannel import QWebChannel
@@ -40,6 +43,17 @@ try:
 
     renderer = 'qtwebengine'
     is_webengine = True
+
+    try:  # Qt >= 5.12
+        from qtpy.QtWebEngineCore import (
+            QWebEngineUrlRequestJob,
+            QWebEngineUrlScheme,
+            QWebEngineUrlSchemeHandler,
+        )
+
+        custom_protocol_origin = protocol.SCHEME_ORIGIN
+    except ImportError:
+        QWebEngineUrlSchemeHandler = object
 except ImportError:
     from PyQt5.QtNetwork import QSslCertificate, QSslConfiguration
     from PyQt5.QtWebKitWidgets import QWebPage, QWebView
@@ -258,6 +272,46 @@ class BrowserView(QMainWindow):
                         QByteArray(key.encode('utf-8')), QByteArray(value.encode('utf-8'))
                     )
 
+    class SchemeHandler(QWebEngineUrlSchemeHandler):
+        def requestStarted(self, job):
+            # an exception raised here would abort the process under PyQt6
+            try:
+                self._serve(job)
+            except Exception:
+                logger.exception('Custom protocol request failed')
+                job.fail(self._errors().RequestFailed)
+
+        def _errors(self):
+            return getattr(QWebEngineUrlRequestJob, 'Error', QWebEngineUrlRequestJob)
+
+        def _serve(self, job):
+            method = bytes(job.requestMethod()).decode()
+            response = protocol.handle(job.requestUrl().toString(), method)
+
+            if response.status != 200:
+                # QWebEngineUrlRequestJob cannot reply with an error status
+                errors = self._errors()
+                error = {403: errors.RequestDenied, 404: errors.UrlNotFound}.get(
+                    response.status, errors.RequestFailed
+                )
+                job.fail(error)
+                return
+
+            if hasattr(job, 'setAdditionalResponseHeaders'):  # Qt >= 6.6
+                job.setAdditionalResponseHeaders(
+                    {
+                        QByteArray(k.encode()): QByteArray(v.encode())
+                        for k, v in response.headers.items()
+                        if k not in ('Content-Type', 'Content-Length')
+                    }
+                )
+
+            # the buffer is parented to the job, so it lives as long as the job does
+            buffer = QtCore.QBuffer(job)
+            buffer.setData(response.body)
+            buffer.open(getattr(QtCore.QIODevice, 'OpenModeFlag', QtCore.QIODevice).ReadOnly)
+            job.reply(response.mimetype.encode(), buffer)
+
     # New-window-requests handler for Qt 5.5+ only
     class NavigationHandler(QWebPage):
         def __init__(self, page):
@@ -430,6 +484,14 @@ class BrowserView(QMainWindow):
             cookie_store.cookieRemoved.connect(self.on_cookie_removed)
 
             self.profile.setUrlRequestInterceptor(self.request_interceptor)
+
+            if (
+                protocol.is_enabled()
+                and custom_protocol_origin
+                and not self.profile.urlSchemeHandler(protocol.SCHEME.encode())
+            ):
+                self.scheme_handler = BrowserView.SchemeHandler(self.profile)
+                self.profile.installUrlSchemeHandler(protocol.SCHEME.encode(), self.scheme_handler)
             self.webview.setPage(BrowserView.WebPage(self, profile=self.profile))
         elif not is_webengine and not _state['private_mode']:
             logger.warning('qtwebkit does not support private_mode')
@@ -915,7 +977,27 @@ def setup_app():
             'QTWEBENGINE_CHROMIUM_FLAGS',
             f"--remote-debugging-port={settings['REMOTE_DEBUGGING_PORT']}",
         )
+    if protocol.is_enabled() and custom_protocol_origin:
+        _register_custom_scheme()
     _app = QApplication.instance() or QApplication(sys.argv)
+
+
+def _register_custom_scheme():
+    if QApplication.instance():
+        logger.warning(
+            'QApplication was created before pywebview2 could register the custom protocol. '
+            'Pages will load, but will not be treated as a secure context.'
+        )
+        return
+
+    flags = getattr(QWebEngineUrlScheme, 'Flag', QWebEngineUrlScheme)
+    scheme = QWebEngineUrlScheme(protocol.SCHEME.encode())
+    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
+    scheme_flags = flags.SecureScheme | flags.CorsEnabled
+    if hasattr(flags, 'FetchApiAllowed'):  # Qt >= 6.6
+        scheme_flags |= flags.FetchApiAllowed
+    scheme.setFlags(scheme_flags)
+    QWebEngineUrlScheme.registerScheme(scheme)
 
 
 def create_window(window):

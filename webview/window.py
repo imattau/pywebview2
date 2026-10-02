@@ -14,6 +14,7 @@ from uuid import uuid1
 from typing_extensions import Concatenate, ParamSpec, TypeAlias
 
 import webview.http as http
+import webview.protocol as protocol
 from webview.dom.dom import DOM
 from webview.errors import JavascriptException, WebViewException
 from webview.event import Event, EventContainer
@@ -191,7 +192,9 @@ class Window:
         if self.localization_override:
             self.localization.update(self.localization_override)
 
-        if is_app(self.original_url) and (server is None or server == http.global_server):
+        if protocol.resolve_url(self.original_url, gui):
+            server = None
+        elif is_app(self.original_url) and (server is None or server == http.global_server):
             *_, server = http.start_server(
                 urls=[self.original_url],
                 http_port=self._http_port,
@@ -274,8 +277,10 @@ class Window:
         :param url: url to load
         :param uid: uid of the target instance
         """
-        if ((self._server is None) or (not self._server.running)) and (
-            is_app(url) or is_local_url(url)
+        if (
+            ((self._server is None) or (not self._server.running))
+            and (is_app(url) or is_local_url(url))
+            and not protocol.resolve_url(url, self.gui)
         ):
             self._url_prefix, self._common_path, self.server = http.start_server([url])
 
@@ -562,6 +567,9 @@ class Window:
             self.run_js(f'window.pywebview._createApi({func_list})')
 
     def _resolve_url(self, url: str) -> str | None:
+        protocol_url = protocol.resolve_url(url, self.gui)
+        if protocol_url:
+            return protocol_url
         if is_app(url):
             return self._url_prefix
         if is_local_url(url) and self._url_prefix and self._common_path is not None:
