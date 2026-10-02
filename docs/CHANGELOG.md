@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### ⚡ Features
+
+- `All` New `custom_protocol` option for `webview.start` serves local files through a native
+  URL scheme handler instead of the local HTTP server. Files are no longer exposed on a
+  network port and the origin is stable between runs. Supported on GTK, Cocoa, Qt WebEngine 6.6+
+  and EdgeChromium; other backends fall back to the HTTP server.
+- `CLI` Projects generated with `pywebview2 init` enable the custom protocol.
+
 ## 0.1.6
 
 _Released 17/08/2026_

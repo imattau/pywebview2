@@ -10,10 +10,12 @@ from threading import Semaphore, Thread, main_thread
 
 import AppKit
 import Foundation
+import objc
 import WebKit
 from objc import nil, super
 from PyObjCTools import AppHelper
 
+import webview.protocol as protocol
 from webview import FileDialog, _state, windows
 from webview import settings as webview_settings
 from webview.dom import _dnd_state
@@ -51,6 +53,7 @@ logger = logging.getLogger('pywebview2')
 logger.debug('Using Cocoa')
 
 renderer = 'wkwebview'
+custom_protocol_origin = protocol.SCHEME_ORIGIN
 
 
 def _primary_screen_height():
@@ -171,6 +174,25 @@ class BrowserView:
             if body['params'] is WebKit.WebUndefined.undefined():
                 body['params'] = None
             js_bridge_call(self.window, body['funcName'], body['params'], body['id'])
+
+    class SchemeHandler(AppKit.NSObject, protocols=[objc.protocolNamed('WKURLSchemeHandler')]):
+        def webView_startURLSchemeTask_(self, webview, task):
+            request = task.request()
+            url = request.URL()
+            response = protocol.handle(str(url.absoluteString()), str(request.HTTPMethod()))
+
+            http_response = Foundation.NSHTTPURLResponse.alloc().initWithURL_statusCode_HTTPVersion_headerFields_(
+                url, response.status, 'HTTP/1.1', response.headers
+            )
+            task.didReceiveResponse_(http_response)
+            task.didReceiveData_(
+                Foundation.NSData.dataWithBytes_length_(response.body, len(response.body))
+            )
+            task.didFinish()
+
+        def webView_stopURLSchemeTask_(self, webview, task):
+            # responses are delivered synchronously in startURLSchemeTask
+            pass
 
     class DownloadDelegate(AppKit.NSObject):
         # Download delegate to handle links with download attribute set
@@ -614,6 +636,10 @@ class BrowserView:
         self.window.setFrame_display_(frame, True)
 
         config = WebKit.WKWebViewConfiguration.alloc().init()
+        if protocol.is_enabled():
+            # must be set before the webview is created, which copies the configuration
+            self.scheme_handler = BrowserView.SchemeHandler.alloc().init()
+            config.setURLSchemeHandler_forURLScheme_(self.scheme_handler, protocol.SCHEME)
         self.webview = BrowserView.WebKitHost.alloc().initWithFrame_configuration_(rect, config)
         self.webview.pywebview_window = window
 
